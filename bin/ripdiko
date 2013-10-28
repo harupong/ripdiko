@@ -5,7 +5,7 @@ require 'uri'
 require 'pathname'
 require 'base64'
 require 'open-uri'
-require 'nokogiri'
+require 'rexml/document'
 require 'date'
 require 'fileutils'
 
@@ -116,23 +116,25 @@ class DownloadTask
 
   def now_playing(station)
     now = Time.now
-    doc = Nokogiri::XML(open("http://radiko.jp/v2/api/program/now?area_id=#{area_id}"))
 
-    node = doc.xpath(%Q|//station[@id="#{station}"]|).first
-    node.xpath(".//prog").each do |prog|
-      from, to = parse_time(prog[:ft]), parse_time(prog[:to])
+    f = open("http://radiko.jp/v2/api/program/now?area_id=#{area_id}")
+    doc = REXML::Document.new(f)
+
+    node = REXML::XPath.match(doc, ".//station[@id='#{@station}']")
+    REXML::XPath.each(node, ".//prog") do |prog|
+      from, to = parse_time(prog.attributes["ft"]), parse_time(prog.attributes["to"])
       start_time = now.to_i + buffer
       if from.to_i <= start_time && start_time < to.to_i
         return Program.new(
-          id: "#{prog[:ft]}-#{station}",
-          station: val(node, :name),
-          title: val(prog, :title),
+          id: "#{prog.attributes["ft"]}-#{station}",
+          station: @station,
+          title: prog.get_text("title"),
           from: from,
           to: to,
-          duration: prog[:dur].to_i,
-          subtitle: val(prog, :sub_title),
-          performer: val(prog, :pfm),
-          info: val(prog, :info),
+          duration: prog.attributes["dur"].to_i,
+          subtitle: prog.get_text("sub_title"),
+          performer: prog.get_text("pfm"),
+          info: prog.get_text("info"),
         )
       end
     end
